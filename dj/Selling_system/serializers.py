@@ -104,6 +104,10 @@ class Sale_Serializer(serializers.ModelSerializer):
 
                 return True
 
+            else:
+
+                return False
+
         else:
 
             return False

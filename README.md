@@ -1,5 +1,12 @@
 # 🛒 Sales & Inventory Management System (RESTful API)
 
+## 🌐 Live Demo
+
+The API is deployed and accessible online via Render:
+
+👉 [Sales Management API – Live](https://sales-management-dk5m.onrender.com/selling_system/)
+
+
 A robust, production-grade **Sales and Inventory Management System API** built with **Python**, **Django**, and **Django REST Framework (DRF)**.
 
 The system is designed to streamline retail operations, enforce strict financial data integrity, handle customer debt tracking with overpayment protection, and provide real-time business intelligence and analytics for decision-makers.

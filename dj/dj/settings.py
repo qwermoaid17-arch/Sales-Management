@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+from datetime import timedelta as dt
 
 load_dotenv()
 
@@ -38,6 +39,8 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django_secret_key_placeholder')
 # Application definition
 
 INSTALLED_APPS = [
+    'rest_framework_simplejwt',
+    'djoser',
     'Selling_system.apps.SellingSystemConfig',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -115,10 +118,19 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 REST_FRAMEWORK = {
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',    
-    'PAGE_SIZE': 10
+    'DEFAULT_PAGINATION_CLASS' : 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE' : 10,
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+    'rest_framework_simplejwt.authentication.JWTAuthentication',
+
+    ),
 }
 
+SIMPLE_JWT = {
+   'AUTH_HEADER_TYPES': ('JWT',),
+    'ACCESS_TOKEN_LIFETIME' : dt(days=1),
+    'REFRESH_TOKEN_LIFETIME' : dt(days=7)
+}
 
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/

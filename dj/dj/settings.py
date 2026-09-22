@@ -14,6 +14,7 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 from datetime import timedelta as dt
+import dj_database_url
 
 load_dotenv()
 
@@ -88,14 +89,9 @@ WSGI_APPLICATION = 'dj.wsgi.application'
 
 password = os.environ.get('PASSWORD', 'default_password')
 
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'HOST' : 'localhost',
-        'NAME': 'dj',
-        'USER' : 'root',
-        'PASSWORD' : password
-    }
+    'default': dj_database_url.config(default=os.environ.get('DATABASE_URL'))
 }
 
 

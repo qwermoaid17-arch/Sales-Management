@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+
+{% block title %}إنشاء حساب جديد{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center align-items-center" style="min-height: 75vh;">
+    <div class="col-md-5 col-lg-4">
+        <div class="card shadow-lg border-0 rounded-4">
+            <div class="card-body p-4 text-center">
+                <div class="mb-3 text-warning">
+                    <i class="fa-solid fa-user-plus display-4"></i>
+                </div>
+                <h4 class="fw-bold mb-3">إنشاء حساب جديد</h4>
+
+                <div id="alert-box" class="alert alert-danger d-none text-end p-2 small"></div>
+
+                <form id="register-form">
+                    {% csrf_token %}
+                    <div class="form-floating mb-3 text-end">
+                        <input type="text" id="usernameInput" class="form-control rounded-3" placeholder="اسم المستخدم" required autofocus>
+                        <label for="usernameInput">اسم المستخدم</label>
+                    </div>
+                    <div class="form-floating mb-3 text-end">
+                        <input type="email" id="emailInput" class="form-control rounded-3" placeholder="البريد الإلكتروني (اختياري)">
+                        <label for="emailInput">البريد الإلكتروني (اختياري)</label>
+                    </div>
+                    <div class="form-floating mb-3 text-end">
+                        <input type="password" id="passwordInput" class="form-control rounded-3" placeholder="كلمة المرور" minlength="8" required>
+                        <label for="passwordInput">كلمة المرور (8 أحرف على الأقل)</label>
+                    </div>
+                    <div class="form-floating mb-4 text-end">
+                        <input type="password" id="password2Input" class="form-control rounded-3" placeholder="تأكيد كلمة المرور" required>
+                        <label for="password2Input">تأكيد كلمة المرور</label>
+                    </div>
+                    <button type="submit" id="submitBtn" class="btn btn-warning text-dark w-100 py-2 rounded-3 fw-bold">
+                        إنشاء الحساب
+                    </button>
+                </form>
+                <div class="mt-3 text-center small text-muted">
+                    لديك حساب بالفعل؟ <a href="{% url 'login' %}" class="text-decoration-none">تسجيل الدخول</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('register-form').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    const alertBox = document.getElementById('alert-box');
+    const submitBtn = document.getElementById('submitBtn');
+    const showError = msg => { alertBox.innerText = msg; alertBox.classList.remove('d-none'); };
+
+    alertBox.classList.add('d-none');
+
+    const username = document.getElementById('usernameInput').value.trim();
+    const email = document.getElementById('emailInput').value.trim();
+    const password = document.getElementById('passwordInput').value;
+    const password2 = document.getElementById('password2Input').value;
+    const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]')?.value;
+
+    if (password !== password2) return showError('كلمتا المرور غير متطابقتين');
+
+    submitBtn.disabled = true;
+    submitBtn.innerText = 'جاري إنشاء الحساب...';
+
+    try {
+        const response = await fetch(window.location.href, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+            body: JSON.stringify({ username, email, password })
+        });
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+            localStorage.setItem('access_token', data.access);
+            localStorage.setItem('refresh_token', data.refresh);
+            window.location.href = data.redirect_url;
+        } else {
+            showError(data.detail || 'تعذر إنشاء الحساب، يرجى المحاولة لاحقاً');
+        }
+    } catch (err) {
+        showError('حدث خطأ أثناء الاتصال بالخادم');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'إنشاء الحساب';
+    }
+});
+</script>
+{% endblock %}

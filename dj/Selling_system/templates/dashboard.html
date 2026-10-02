@@ -1,0 +1,196 @@
+{% extends 'base.html' %}
+
+{% block title %}لوحة التحكم الرئيسية{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="fw-bold mb-0"><i class="fa-solid fa-gauge-high text-primary me-2"></i>لوحة التحكم</h3>
+    <span class="badge bg-primary fs-6 px-3 py-2 rounded-pill shadow-sm">مرحباً، {{ user.username }}</span>
+</div>
+
+<!-- التنقل السريع -->
+<div class="row g-3 mb-5">
+    <div class="col-6 col-md-4 col-lg-2">
+        <a href="{% url 'products_page' %}" class="text-decoration-none">
+            <div class="card bg-primary text-white text-center p-3 card-stat shadow-sm">
+                <i class="fa-solid fa-box display-6 mb-2"></i><h6 class="fw-bold mb-0">المنتجات</h6>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <a href="{% url 'customers_page' %}" class="text-decoration-none">
+            <div class="card bg-success text-white text-center p-3 card-stat shadow-sm">
+                <i class="fa-solid fa-users display-6 mb-2"></i><h6 class="fw-bold mb-0">العملاء</h6>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <a href="{% url 'sales_page' %}?new=1" class="text-decoration-none">
+            <div class="card bg-warning text-dark text-center p-3 card-stat shadow-sm">
+                <i class="fa-solid fa-cart-shopping display-6 mb-2"></i><h6 class="fw-bold mb-0">فاتورة جديدة</h6>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <a href="{% url 'payments_page' %}" class="text-decoration-none">
+            <div class="card bg-info text-white text-center p-3 card-stat shadow-sm">
+                <i class="fa-solid fa-hand-holding-dollar display-6 mb-2"></i><h6 class="fw-bold mb-0">المدفوعات</h6>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <a href="{% url 'sales_page' %}" class="text-decoration-none">
+            <div class="card bg-secondary text-white text-center p-3 card-stat shadow-sm">
+                <i class="fa-solid fa-receipt display-6 mb-2"></i><h6 class="fw-bold mb-0">سجل المبيعات</h6>
+            </div>
+        </a>
+    </div>
+    <div class="col-6 col-md-4 col-lg-2">
+        <a href="#stats" class="text-decoration-none">
+            <div class="card bg-dark text-white text-center p-3 card-stat shadow-sm">
+                <i class="fa-solid fa-chart-pie display-6 mb-2"></i><h6 class="fw-bold mb-0">الإحصائيات</h6>
+            </div>
+        </a>
+    </div>
+</div>
+
+<div class="mb-3" id="stats">
+    <h5 class="fw-bold text-secondary"><i class="fa-solid fa-list-check me-2"></i>ملخص النظام</h5>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 border-start border-4 border-primary">
+            <span class="text-muted small fw-bold">إجمالي المنتجات</span>
+            <h3 class="fw-bold mb-0 mt-1" id="total-products">0</h3>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 border-start border-4 border-success">
+            <span class="text-muted small fw-bold">إجمالي العملاء</span>
+            <h3 class="fw-bold mb-0 mt-1" id="total-customers">0</h3>
+        </div>
+    </div>
+    {% if user.is_staff %}
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 border-start border-4 border-danger">
+            <span class="text-muted small fw-bold">إجمالي الديون المتبقية</span>
+            <h3 class="fw-bold text-danger mb-0 mt-1" id="total-debts">$0.00</h3>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 border-start border-4 border-warning">
+            <span class="text-muted small fw-bold">مبيعات اليوم</span>
+            <h3 class="fw-bold text-success mb-0 mt-1" id="today-sales">$0.00</h3>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card border-0 shadow-sm rounded-4 p-3 border-start border-4 border-success">
+            <span class="text-muted small fw-bold">صافي ربح اليوم</span>
+            <h3 class="fw-bold text-success mb-0 mt-1" id="today-profit">$0.00</h3>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-header bg-white fw-bold border-0"><i class="fa-solid fa-fire text-danger me-2"></i>الأكثر مبيعاً</div>
+            <ul class="list-group list-group-flush" id="top-products"><li class="list-group-item text-muted">...</li></ul>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-header bg-white fw-bold border-0"><i class="fa-solid fa-triangle-exclamation text-warning me-2"></i>مخزون منخفض (10 أو أقل)</div>
+            <ul class="list-group list-group-flush" id="low-stock"><li class="list-group-item text-muted">...</li></ul>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-header bg-white fw-bold border-0"><i class="fa-solid fa-clock text-primary me-2"></i>أوقات الذروة</div>
+            <ul class="list-group list-group-flush" id="peak-times"><li class="list-group-item text-muted">...</li></ul>
+        </div>
+    </div>
+</div>
+
+{% if user.is_staff %}
+<div class="row g-3">
+    <div class="col-md-7">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-header bg-white fw-bold border-0"><i class="fa-solid fa-sack-dollar text-success me-2"></i>الأرباح</div>
+            <div class="table-responsive">
+                <table class="table text-center align-middle mb-0">
+                    <thead class="table-light"><tr><th>الفترة</th><th>إجمالي المبيعات</th><th>صافي الربح</th></tr></thead>
+                    <tbody id="earnings-body"><tr><td colspan="3" class="text-muted">...</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-5">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-header bg-white fw-bold border-0"><i class="fa-solid fa-file-invoice-dollar text-danger me-2"></i>أكبر المدينين</div>
+            <ul class="list-group list-group-flush" id="top-debts"><li class="list-group-item text-muted">...</li></ul>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const IS_STAFF = {{ user.is_staff|yesno:"true,false" }};
+const EMPTY = '<li class="list-group-item text-muted">لا توجد بيانات</li>';
+const li = html => `<li class="list-group-item d-flex justify-content-between align-items-center">${html}</li>`;
+const setList = (id, items) => { document.getElementById(id).innerHTML = items.length ? items.join('') : EMPTY; };
+
+async function get(path) {
+    const r = await api(`${A}/statistics/${path}`);
+    if (!r.ok) throw new Error(errText(r.data));
+    return r.data;
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    // الأرقام الرئيسية
+    try {
+        const s = await get('');
+        document.getElementById('total-products').textContent = s.total_products ?? 0;
+        document.getElementById('total-customers').textContent = s.total_customers ?? 0;
+        if (IS_STAFF) {
+            document.getElementById('total-debts').textContent = money(s.total_remaining_debts);
+            document.getElementById('today-sales').textContent = money(s.today_sales);
+        }
+    } catch (e) { console.error(e); toast('تعذر تحميل الإحصائيات', 'danger'); }
+
+    const jobs = [
+        get('sales_statistics/').then(d => setList('top-products', d.map(p =>
+            li(`<span>${esc(p.name)}</span><span class="badge bg-primary rounded-pill">${p.quantity}</span>`)))),
+        get('products_statistics/').then(d => setList('low-stock', d.map(p =>
+            li(`<span>${esc(p.name)}</span><span class="badge bg-${p.quantity <= 0 ? 'danger' : 'warning text-dark'} rounded-pill">${p.quantity}</span>`)))),
+        get('peak_times_statistics/').then(d => {
+            const out = [];
+            (d.peak_hour || []).forEach(h => out.push(li(`<span>أفضل ساعة</span><span>${esc(h.hour)} <small class="text-muted">(${h.total_orders} فاتورة)</small></span>`)));
+            (d.peak_day || []).forEach(x => out.push(li(`<span>أفضل يوم</span><span>${esc(x.day)} <small class="text-muted">(${x.total_orders} فاتورة)</small></span>`)));
+            setList('peak-times', out);
+        })
+    ];
+
+    if (IS_STAFF) {
+        const periods = { all_time: 'كل الفترات', today: 'اليوم', week: 'آخر 7 أيام', month: 'آخر 30 يوماً', year: 'آخر سنة' };
+        jobs.push(
+            get('earnings_statistics/').then(d => {
+                const t = Object.values(d.today || {});   // [مبيعات اليوم, صافي ربح اليوم]
+                document.getElementById('today-profit').textContent = money(t[1]);
+                document.getElementById('earnings-body').innerHTML = Object.entries(periods).map(([k, label]) => {
+                    const vals = Object.values(d[k] || {});   // [إجمالي المبيعات, صافي الربح]
+                    return `<tr><td class="fw-bold">${label}</td><td>${money(vals[0])}</td><td class="text-success fw-bold">${money(vals[1])}</td></tr>`;
+                }).join('');
+            }),
+            get('debt_statistics/').then(d => setList('top-debts', (d.top_debt || []).map(c =>
+                li(`<span>${esc(c.name)}</span><span class="badge bg-danger rounded-pill">${money(c.total_remaining)}</span>`))))
+        );
+    }
+    (await Promise.allSettled(jobs)).forEach(r => r.status === 'rejected' && console.error(r.reason));
+});
+</script>
+{% endblock %}

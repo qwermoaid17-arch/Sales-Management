@@ -13,5 +13,16 @@ router.register('saleitems', SaleItems_View_Set)
 router.register('statistics', Statistics_View_Set, basename='statistics')
 
 urlpatterns = [
+    # مسارات الواجهة (Web UI)
+    path('login/', login_view, name='login'),
+    path('logout/', logout_view, name='logout'),
+    path('dashboard/', dashboard_view, name='dashboard'),
+    path('products-page/', products_page, name='products_page'),
+    path('customers-page/', customers_page, name='customers_page'),
+    path('sales-page/', sales_page, name='sales_page'),
+    path('payments-page/', payments_page, name='payments_page'),
+    path('register/', register_view, name='register'),
+
+    # مسارات الـ REST API
     path('', include(router.urls)),
 ]

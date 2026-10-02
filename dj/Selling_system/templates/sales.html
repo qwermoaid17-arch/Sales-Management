@@ -1,0 +1,299 @@
+{% extends 'base.html' %}
+
+{% block title %}سجل المبيعات{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="fw-bold"><i class="fa-solid fa-receipt me-2"></i>سجل الفواتير والمبيعات</h3>
+    <button class="btn btn-warning fw-bold" onclick="openNew()">
+        <i class="fa-solid fa-cart-shopping me-1"></i> فاتورة جديدة
+    </button>
+</div>
+
+<div class="card shadow-sm border-0 rounded-3">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 text-center">
+                <thead class="table-light">
+                    <tr>
+                        <th>رقم الفاتورة</th>
+                        <th>العميل</th>
+                        <th>طريقة الدفع</th>
+                        <th>المبلغ الإجمالي</th>
+                        <th>الحالة</th>
+                        <th>التاريخ</th>
+                        <th>الإجراءات</th>
+                    </tr>
+                </thead>
+                <tbody id="sales-table-body">
+                    <tr><td colspan="7" class="text-muted py-4">جاري تحميل البيانات...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="pager"></div>
+    </div>
+</div>
+
+<!-- Modal فاتورة جديدة -->
+<div class="modal fade" id="newSaleModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">فاتورة جديدة</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="sale-form">
+                <div class="modal-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label">طريقة الدفع</label>
+                            <select id="sale-type" class="form-select">
+                                <option value="cash">نقدي</option>
+                                <option value="card">بطاقة</option>
+                                <option value="transfer">حوالة</option>
+                                <option value="debt">آجل (دين)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-2 d-none" id="customer-wrap">
+                            <label class="form-label">العميل (مطلوب للدين)</label>
+                            <select id="sale-customer" class="form-select"></select>
+                        </div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h6 class="fw-bold mb-0">المنتجات</h6>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="addRow()">
+                            <i class="fa-solid fa-plus me-1"></i> إضافة منتج
+                        </button>
+                    </div>
+                    <div id="items-box"></div>
+
+                    <div class="text-end fs-5 fw-bold mt-3">الإجمالي: <span id="grand-total" class="text-success">$0.00</span></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="submit" class="btn btn-success" id="sale-save">حفظ الفاتورة</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal تفاصيل الفاتورة -->
+<div class="modal fade" id="detailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold" id="details-title"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="details-body"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal إلغاء فاتورة -->
+<div class="modal fade" id="cancelModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">إلغاء الفاتورة</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="cancel-id">
+                <div class="alert alert-warning small">سيتم حذف الفاتورة نهائياً.</div>
+                <label class="form-label">ماذا نفعل بالمنتجات؟</label>
+                <select id="cancel-type" class="form-select">
+                    <option value="canceled">إرجاعها إلى المخزن</option>
+                    <option value="DAMAGED">تالفة (لا تُرجع للمخزن)</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">تراجع</button>
+                <button type="button" class="btn btn-danger" id="cancel-confirm">تأكيد الإلغاء</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const TYPES = { cash: 'نقدي', card: 'بطاقة', debt: 'آجل (دين)', transfer: 'حوالة' };
+let page = 1, productsCache = [];
+const salesMap = {};
+
+const modalOf = id => bootstrap.Modal.getOrCreateInstance(document.getElementById(id));
+
+function statusBadge(s) {
+    if (s.payment_type !== 'debt') return '<span class="badge bg-success">مدفوعة</span>';
+    return s.status ? '<span class="badge bg-success">مسددة</span>' : '<span class="badge bg-danger">غير مسددة</span>';
+}
+
+async function loadSales() {
+    const tbody = document.getElementById('sales-table-body');
+    try {
+        const r = await api(`${A}/sales/?page=${page}&page_size=10`);
+        if (!r.ok) {
+            tbody.innerHTML = `<tr><td colspan="7" class="text-danger py-4">${esc(errText(r.data))}</td></tr>`;
+            return;
+        }
+        const sales = r.data.results || r.data;
+        if (!sales.length && page > 1) { page--; return loadSales(); }
+        if (!sales.length) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-muted py-4">لا توجد مبيعات مسجلة حتى الآن</td></tr>';
+            renderPager('pager', null);
+            return;
+        }
+        tbody.innerHTML = sales.map(s => {
+            salesMap[s.id] = s;
+            return `<tr>
+                <td>#${s.id}</td>
+                <td class="fw-bold">${esc(s.customer || 'عميل عام')}</td>
+                <td>${TYPES[s.payment_type] || esc(s.payment_type)}</td>
+                <td class="text-success fw-bold">${money(s.big_total)}</td>
+                <td>${statusBadge(s)}</td>
+                <td>${esc(s.date_created)}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="showDetails(${s.id})" title="التفاصيل"><i class="fa-solid fa-eye"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="openCancel(${s.id})" title="إلغاء"><i class="fa-solid fa-ban"></i></button>
+                </td>
+            </tr>`;
+        }).join('');
+        renderPager('pager', r.data, page, p => { page = p; loadSales(); });
+    } catch (err) { console.error(err); }
+}
+
+function showDetails(id) {
+    const s = salesMap[id];
+    document.getElementById('details-title').textContent = `الفاتورة #${s.id} — ${s.customer || 'عميل عام'}`;
+    const rows = (s.items || []).map(i => `<tr>
+        <td>${esc(i.product || 'منتج محذوف')}</td>
+        <td>${i.quantity}</td>
+        <td>${money(i.price_at_sale)}</td>
+        <td>${money(i.total_price)}</td></tr>`).join('');
+    document.getElementById('details-body').innerHTML = `
+        <table class="table table-sm text-center align-middle">
+            <thead class="table-light"><tr><th>المنتج</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead>
+            <tbody>${rows || '<tr><td colspan="4" class="text-muted">لا توجد منتجات</td></tr>'}</tbody>
+            <tfoot><tr class="fw-bold"><td colspan="3">المجموع</td><td>${money(s.big_total)}</td></tr></tfoot>
+        </table>`;
+    modalOf('detailsModal').show();
+}
+
+function openCancel(id) {
+    document.getElementById('cancel-id').value = id;
+    modalOf('cancelModal').show();
+}
+
+/* ---------- فاتورة جديدة ---------- */
+function productOptions() {
+    return '<option value="">— اختر منتجاً —</option>' + productsCache.map(p =>
+        `<option value="${esc(p.name)}" data-price="${p.selling_price}" data-stock="${p.quantity}" ${p.quantity <= 0 ? 'disabled' : ''}>
+            ${esc(p.name)} — ${money(p.selling_price)} (متوفر: ${p.quantity})</option>`).join('');
+}
+
+function addRow() {
+    const row = document.createElement('div');
+    row.className = 'row g-2 align-items-center mb-2 item-row';
+    row.innerHTML = `
+        <div class="col-7"><select class="form-select item-product" required>${productOptions()}</select></div>
+        <div class="col-3"><input type="number" min="1" step="1" value="1" class="form-control item-qty" required></div>
+        <div class="col-2"><button type="button" class="btn btn-outline-danger w-100 item-del"><i class="fa-solid fa-xmark"></i></button></div>`;
+    row.querySelector('.item-del').onclick = () => {
+        if (document.querySelectorAll('.item-row').length > 1) { row.remove(); recalc(); }
+    };
+    row.querySelectorAll('select,input').forEach(el => el.addEventListener('input', recalc));
+    document.getElementById('items-box').appendChild(row);
+}
+
+function getItems() {
+    return [...document.querySelectorAll('.item-row')].map(r => {
+        const sel = r.querySelector('.item-product');
+        const opt = sel.selectedOptions[0];
+        return {
+            product: sel.value,
+            quantity: parseInt(r.querySelector('.item-qty').value, 10) || 0,
+            price: opt ? parseFloat(opt.dataset.price) || 0 : 0,
+            stock: opt ? parseInt(opt.dataset.stock, 10) || 0 : 0
+        };
+    });
+}
+
+function recalc() {
+    const total = getItems().reduce((s, i) => s + i.price * i.quantity, 0);
+    document.getElementById('grand-total').textContent = money(total);
+}
+
+async function openNew() {
+    try {
+        const [products, customers] = await Promise.all([fetchAll(`${A}/products/`), fetchAll(`${A}/customers/`)]);
+        productsCache = products;
+        document.getElementById('sale-customer').innerHTML =
+            '<option value="">— اختر عميلاً —</option>' + customers.map(c => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join('');
+    } catch (e) { toast(e.message, 'danger'); return; }
+    document.getElementById('sale-form').reset();
+    document.getElementById('customer-wrap').classList.add('d-none');
+    document.getElementById('items-box').innerHTML = '';
+    addRow(); recalc();
+    modalOf('newSaleModal').show();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadSales();
+    if (new URLSearchParams(location.search).get('new') === '1') openNew();
+
+    document.getElementById('sale-type').addEventListener('change', e => {
+        const isDebt = e.target.value === 'debt';
+        document.getElementById('customer-wrap').classList.toggle('d-none', !isDebt);
+        document.getElementById('sale-customer').required = isDebt;
+    });
+
+    document.getElementById('sale-form').addEventListener('submit', async e => {
+        e.preventDefault();
+        const type = document.getElementById('sale-type').value;
+        const customer = document.getElementById('sale-customer').value;
+        const items = getItems();
+
+        // تحقق من المخزون قبل الإرسال (مجموع الكميات لكل منتج)
+        const used = {};
+        for (const i of items) {
+            used[i.product] = (used[i.product] || 0) + i.quantity;
+            if (i.quantity <= 0) return toast('الكمية يجب أن تكون أكبر من صفر', 'danger');
+            if (used[i.product] > i.stock) return toast(`الكمية المطلوبة من "${i.product}" أكبر من المتوفر (${i.stock})`, 'danger');
+        }
+
+        const btn = document.getElementById('sale-save');
+        btn.disabled = true;
+        try {
+            const payload = { payment_type: type };
+            if (type === 'debt') payload.customer = customer;
+            const r = await api(`${A}/sales/`, { method: 'POST', body: payload });
+            if (!r.ok) return toast(errText(r.data), 'danger');
+
+            const saleId = r.data.id;
+            for (const i of items) {
+                const ir = await api(`${A}/saleitems/`, { method: 'POST', body: { sale: saleId, product: i.product, quantity: i.quantity } });
+                if (!ir.ok) {
+                    // تراجع: حذف الفاتورة وإرجاع ما خُصم من المخزون
+                    await api(`${A}/sales/${saleId}/cancel/`, { method: 'POST', body: { cancel_type: 'canceled' } });
+                    return toast(errText(ir.data), 'danger');
+                }
+            }
+            modalOf('newSaleModal').hide();
+            toast(`تم حفظ الفاتورة #${saleId}`);
+            page = 1;
+            loadSales();
+        } finally { btn.disabled = false; }
+    });
+
+    document.getElementById('cancel-confirm').addEventListener('click', async () => {
+        const id = document.getElementById('cancel-id').value;
+        const r = await api(`${A}/sales/${id}/cancel/`, { method: 'POST', body: { cancel_type: document.getElementById('cancel-type').value } });
+        if (r.ok) { modalOf('cancelModal').hide(); toast('تم إلغاء الفاتورة'); loadSales(); }
+        else toast(errText(r.data), 'danger');
+    });
+});
+</script>
+{% endblock %}

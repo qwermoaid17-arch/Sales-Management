@@ -1,0 +1,126 @@
+{% extends 'base.html' %}
+
+{% block title %}إدارة العملاء{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="fw-bold"><i class="fa-solid fa-users me-2"></i>سجل العملاء</h3>
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addCustomerModal">
+        <i class="fa-solid fa-user-plus me-1"></i> إضافة عميل جديد
+    </button>
+</div>
+
+<div class="card shadow-sm border-0 rounded-3">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 text-center">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>اسم العميل</th>
+                        <th>إجمالي الدين</th>
+                        <th>المسدد</th>
+                        <th>المتبقي</th>
+                        <th>الإجراءات</th>
+                    </tr>
+                </thead>
+                <tbody id="customers-table-body">
+                    <tr><td colspan="6" class="text-muted py-4">جاري تحميل البيانات...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="pager"></div>
+    </div>
+</div>
+
+<div class="modal fade" id="addCustomerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">إضافة عميل جديد</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="add-customer-form">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">اسم العميل</label>
+                        <input type="text" id="cust-name" class="form-control" maxlength="100" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="submit" class="btn btn-success" id="cust-save">حفظ العميل</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let page = 1;
+
+async function loadCustomers() {
+    const tbody = document.getElementById('customers-table-body');
+    try {
+        const r = await api(`${A}/customers/?page=${page}`);
+        if (!r.ok) {
+            tbody.innerHTML = `<tr><td colspan="6" class="text-danger py-4">${esc(errText(r.data))}</td></tr>`;
+            return;
+        }
+        const customers = r.data.results || r.data;
+        if (!customers.length && page > 1) { page--; return loadCustomers(); }
+        if (!customers.length) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-muted py-4">لا يوجد عملاء مسجلون</td></tr>';
+            renderPager('pager', null);
+            return;
+        }
+        tbody.innerHTML = customers.map(c => {
+            const remaining = parseFloat(c.total_remaining) || 0;
+            const credit = parseFloat(c.credit_balance) || 0;
+            const payBtn = remaining > 0
+                ? `<a class="btn btn-sm btn-outline-success" href="{% url 'payments_page' %}?customer=${encodeURIComponent(c.name)}" title="تسديد دفعة"><i class="fa-solid fa-hand-holding-dollar"></i></a>`
+                : '';
+            return `<tr>
+                <td>${c.id}</td>
+                <td class="fw-bold">${esc(c.name)}</td>
+                <td>${money(c.total_debt)}</td>
+                <td class="text-success">${money(c.total_paid)}</td>
+                <td><span class="badge bg-${remaining > 0 ? 'danger' : 'success'}">${money(remaining)}</span>
+                    ${credit > 0 ? `<span class="badge bg-info text-dark" title="دفع أكثر من دينه الحالي (مثلاً بعد إلغاء فاتورة مسددة)">رصيد للعميل ${money(credit)}</span>` : ''}</td>
+                <td>${payBtn}
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteCustomer(${c.id})"><i class="fa-solid fa-trash"></i></button>
+                </td>
+            </tr>`;
+        }).join('');
+        renderPager('pager', r.data, page, p => { page = p; loadCustomers(); });
+    } catch (err) { console.error(err); }
+}
+
+async function deleteCustomer(id) {
+    if (!confirm('سيتم حذف العميل وكل دفعاته، وستبقى فواتيره بدون عميل. هل أنت متأكد؟')) return;
+    const r = await api(`${A}/customers/${id}/`, { method: 'DELETE' });
+    if (r.ok) { toast('تم حذف العميل'); loadCustomers(); }
+    else toast(errText(r.data), 'danger');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadCustomers();
+    document.getElementById('add-customer-form').addEventListener('submit', async e => {
+        e.preventDefault();
+        const btn = document.getElementById('cust-save');
+        btn.disabled = true;
+        try {
+            const r = await api(`${A}/customers/`, { method: 'POST', body: { name: document.getElementById('cust-name').value.trim() } });
+            if (r.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('addCustomerModal')).hide();
+                e.target.reset();
+                toast('تمت إضافة العميل');
+                loadCustomers();
+            } else toast(errText(r.data), 'danger');
+        } finally { btn.disabled = false; }
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,175 @@
+{% extends 'base.html' %}
+
+{% block title %}إدارة المنتجات{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h3 class="fw-bold"><i class="fa-solid fa-box me-2"></i>إدارة المنتجات</h3>
+    {% if user.is_staff %}
+    <button class="btn btn-primary" onclick="openProductModal()">
+        <i class="fa-solid fa-circle-plus me-1"></i> إضافة منتج جديد
+    </button>
+    {% endif %}
+</div>
+
+<div class="card shadow-sm border-0 rounded-3">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0 text-center">
+                <thead class="table-light">
+                    <tr>
+                        <th>#</th>
+                        <th>اسم المنتج</th>
+                        {% if user.is_staff %}<th>سعر التكلفة</th>{% endif %}
+                        <th>سعر البيع</th>
+                        <th>الكمية المتوفرة</th>
+                        {% if user.is_staff %}<th>الإجراءات</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody id="products-table-body">
+                    <tr><td colspan="6" class="text-muted py-4">جاري تحميل البيانات...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="pager"></div>
+    </div>
+</div>
+
+{% if user.is_staff %}
+<div class="modal fade" id="productModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold" id="productModalTitle">إضافة منتج جديد</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="product-form">
+                <div class="modal-body">
+                    <input type="hidden" id="prod-id">
+                    <div class="mb-3">
+                        <label class="form-label">اسم المنتج</label>
+                        <input type="text" id="prod-name" class="form-control" maxlength="100" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-6 mb-3">
+                            <label class="form-label">سعر التكلفة</label>
+                            <input type="number" step="0.01" min="0" id="prod-cost" class="form-control" required>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <label class="form-label">سعر البيع</label>
+                            <input type="number" step="0.01" min="0" id="prod-price" class="form-control" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">الكمية في المخزن</label>
+                        <input type="number" min="0" step="1" id="prod-qty" class="form-control" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">إلغاء</button>
+                    <button type="submit" class="btn btn-primary" id="prod-save">حفظ المنتج</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const IS_STAFF = {{ user.is_staff|yesno:"true,false" }};
+const COLS = IS_STAFF ? 6 : 4;
+let page = 1;
+const cache = {};
+
+function qtyBadge(q) {
+    const cls = q <= 0 ? 'danger' : (q <= 10 ? 'warning text-dark' : 'success');
+    return `<span class="badge bg-${cls}">${q}</span>`;
+}
+
+async function loadProducts() {
+    const tbody = document.getElementById('products-table-body');
+    try {
+        const r = await api(`${A}/products/?page=${page}`);
+        if (!r.ok) {
+            tbody.innerHTML = `<tr><td colspan="${COLS}" class="text-danger py-4">${esc(errText(r.data))}</td></tr>`;
+            return;
+        }
+        const products = r.data.results || r.data;
+        if (!products.length && page > 1) { page--; return loadProducts(); }
+        if (!products.length) {
+            tbody.innerHTML = `<tr><td colspan="${COLS}" class="text-muted py-4">لا توجد منتجات مسجلة</td></tr>`;
+            renderPager('pager', null);
+            return;
+        }
+        tbody.innerHTML = products.map(p => {
+            cache[p.id] = p;
+            return `<tr>
+                <td>${p.id}</td>
+                <td class="fw-bold">${esc(p.name)}</td>
+                ${IS_STAFF ? `<td>${money(p.cost_price)}</td>` : ''}
+                <td>${money(p.selling_price)}</td>
+                <td>${qtyBadge(p.quantity)}</td>
+                ${IS_STAFF ? `<td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="openProductModal(${p.id})"><i class="fa-solid fa-pen"></i></button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteProduct(${p.id})"><i class="fa-solid fa-trash"></i></button>
+                </td>` : ''}
+            </tr>`;
+        }).join('');
+        renderPager('pager', r.data, page, p => { page = p; loadProducts(); });
+    } catch (err) { console.error(err); }
+}
+
+function openProductModal(id) {
+    const f = document.getElementById('product-form');
+    f.reset();
+    const p = id ? cache[id] : null;
+    document.getElementById('productModalTitle').textContent = p ? 'تعديل المنتج' : 'إضافة منتج جديد';
+    document.getElementById('prod-id').value = p ? p.id : '';
+    if (p) {
+        document.getElementById('prod-name').value = p.name;
+        document.getElementById('prod-cost').value = p.cost_price;
+        document.getElementById('prod-price').value = p.selling_price;
+        document.getElementById('prod-qty').value = p.quantity;
+    }
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('productModal')).show();
+}
+
+async function deleteProduct(id) {
+    if (!confirm('هل أنت متأكد من حذف هذا المنتج؟')) return;
+    const r = await api(`${A}/products/${id}/`, { method: 'DELETE' });
+    if (r.ok) { toast('تم حذف المنتج'); loadProducts(); }
+    else toast(errText(r.data), 'danger');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadProducts();
+    const form = document.getElementById('product-form');
+    if (!form) return;
+    form.addEventListener('submit', async e => {
+        e.preventDefault();
+        const id = document.getElementById('prod-id').value;
+        const body = {
+            name: document.getElementById('prod-name').value.trim(),
+            cost_price: document.getElementById('prod-cost').value,
+            selling_price: document.getElementById('prod-price').value,
+            quantity: parseInt(document.getElementById('prod-qty').value, 10)
+        };
+        if (parseFloat(body.selling_price) < parseFloat(body.cost_price) &&
+            !confirm('سعر البيع أقل من سعر التكلفة، هل تريد المتابعة؟')) return;
+
+        const btn = document.getElementById('prod-save');
+        btn.disabled = true;
+        try {
+            const r = await api(id ? `${A}/products/${id}/` : `${A}/products/`, { method: id ? 'PATCH' : 'POST', body });
+            if (r.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('productModal')).hide();
+                toast(id ? 'تم تعديل المنتج' : 'تمت إضافة المنتج');
+                loadProducts();
+            } else toast(errText(r.data), 'danger');
+        } finally { btn.disabled = false; }
+    });
+});
+</script>
+{% endblock %}

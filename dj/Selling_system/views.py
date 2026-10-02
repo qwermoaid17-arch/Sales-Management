@@ -14,7 +14,7 @@ from .serializers import SaleItem_Serializer
 from .models import *
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, MethodNotAllowed
 from django.db import transaction
 from rest_framework import viewsets
 from django.utils import timezone
@@ -22,6 +22,16 @@ from datetime import timedelta
 from django.db.models import Sum, F, Count
 import json
 from django.db.models.functions import ExtractHour, ExtractWeekDay
+from django.shortcuts import render, redirect
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth import login, logout, authenticate
+from django.contrib import messages
+from .models import Products, Customers, Sales, Payments
+from django.http import JsonResponse
+from django.contrib.auth import authenticate, login
+from django.views.decorators.csrf import csrf_exempt
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth.models import User
 
 class pageNumberPagination(PageNumberPagination):
     def get_page_size(self, request):
@@ -61,26 +71,43 @@ class Sales_View_Set(ModelViewSet):
     permission_classes = [IsAuthenticated]
     pagination_class = pageNumberPagination
 
+    def destroy(self, request, *args, **kwargs):
+        # الحذف المباشر يتجاوز إرجاع المخزون وفحص الديون، فالإلغاء يتم فقط عبر /cancel/
+        raise MethodNotAllowed('DELETE', detail='لا يمكن حذف الفاتورة مباشرة، استخدم إلغاء الفاتورة.')
 
     @action(detail=True, methods=['post'], url_path='cancel')
-    def cancel_sales(self, request, pk = None):
+    def cancel_sales(self, request, pk=None):
         sale = self.get_object()
         cancel_type = request.data.get('cancel_type')
 
-        if cancel_type not in ['canceled','DAMAGED']:
-
+        if cancel_type not in ['canceled', 'DAMAGED']:
             raise ValidationError({'cancel_type': 'Invalid cancel type'})
 
         with transaction.atomic():
-            if cancel_type=='canceled':
-                for item in sale.items.select_related('product').all():
-                    product = item.product
-                    product.quantity += item.quantity
-                    product.save()
+
+            # منع الإلغاء إذا كان العميل قد سدد أكثر من الدين الذي سيبقى بعد الإلغاء
+            if sale.payment_type == 'debt' and sale.customer:
+                customer = sale.customer
+                debt_after = customer.total_debt - sale.big_total
+                if customer.total_paid > debt_after:
+                    raise ValidationError({
+                        'detail': (
+                            f'لا يمكن إلغاء الفاتورة: العميل سدد {customer.total_paid}$ '
+                            f'والدين بعد الإلغاء سيصبح {debt_after}$. '
+                            'عالج الدفعات الزائدة أولاً.'
+                        )
+                    })
+
+            if cancel_type == 'canceled':
+                for item in sale.items.all():
+                    if item.product_id:   # المنتج قد يكون محذوفاً (SET_NULL)
+                        Products.objects.filter(pk=item.product_id).update(
+                            quantity=F('quantity') + item.quantity
+                        )
 
             sale.delete()
-        return Response({'message': 'Sale canceled successfully'}, status=HTTP_200_OK)
 
+        return Response({'message': 'Sale canceled successfully'}, status=HTTP_200_OK)
 
 class SaleItems_View_Set(ModelViewSet):
 
@@ -93,11 +120,27 @@ class Statistics_View_Set(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
 
     def list(self, request):
-        return Response({'Show_earnings_statistics': 'http://127.0.0.1:8000/selling_system/statistics/earnings_statistics/',
-                         'Show_sales_statistics': 'http://127.0.0.1:8000/selling_system/statistics/sales_statistics/',
-                         'Show_products_statistics': 'http://127.0.0.1:8000/selling_system/statistics/products_statistics/',
-                         'Show_debt_statistics': 'http://127.0.0.1:8000/selling_system/statistics/debt_statistics/',
-                         'Show_Peak_times_Statistics': 'http://127.0.0.1:8000/selling_system/statistics/peak_times_statistics/'}, status=HTTP_200_OK)
+        data = {
+            'total_products': Products.objects.count(),
+            'total_customers': Customers.objects.count(),
+        }
+
+        # الأرقام المالية للمسؤول فقط
+        if request.user.is_staff:
+            today = timezone.now().date()
+            data['total_remaining_debts'] = float(sum(c.total_remaining for c in Customers.objects.all()))
+            data['today_sales'] = float(sum(
+                s.big_total for s in Sales.objects.filter(date_created__date=today, status=True)
+            ))
+            data['endpoints'] = {
+                'earnings': 'http://127.0.0.1:8000/selling_system/statistics/earnings_statistics/',
+                'sales': 'http://127.0.0.1:8000/selling_system/statistics/sales_statistics/',
+                'products': 'http://127.0.0.1:8000/selling_system/statistics/products_statistics/',
+                'debt': 'http://127.0.0.1:8000/selling_system/statistics/debt_statistics/',
+                'peak_times': 'http://127.0.0.1:8000/selling_system/statistics/peak_times_statistics/',
+            }
+
+        return Response(data, status=HTTP_200_OK)
 
     @action(detail=False, methods=['get'], url_path='earnings_statistics', permission_classes=[IsAdminUser])
     def earnings_statistics(self, request):
@@ -250,4 +293,102 @@ class Statistics_View_Set(viewsets.ViewSet):
     
 
 
-    
+def login_view(request):
+    if request.method == 'POST':
+        # قراءة البيانات سواء كانت مرسلة كـ JSON من Fetch أو Form عادي
+        if request.content_type == 'application/json':
+            data = json.loads(request.body)
+            username = data.get('username')
+            password = data.get('password')
+        else:
+            username = request.POST.get('username')
+            password = request.POST.get('password')
+
+        user = authenticate(request, username=username, password=password)
+
+        if user is not None:
+            # 1. إنشاء Session في المتصفح لفتح صفحات الواجهات
+            login(request, user)
+
+            # 2. توليد توكنات JWT للـ API
+            refresh = RefreshToken.for_user(user)
+
+            # تحديد رابط التوجيه المطلوب
+            redirect_url = request.GET.get('next') or '/selling_system/dashboard/'
+
+            if request.content_type == 'application/json':
+                return JsonResponse({
+                    'success': True,
+                    'access': str(refresh.access_token),
+                    'refresh': str(refresh),
+                    'redirect_url': redirect_url
+                })
+            return redirect(redirect_url)
+
+        else:
+            if request.content_type == 'application/json':
+                return JsonResponse({'detail': 'اسم المستخدم أو كلمة المرور غير صحيحة'}, status=400)
+            return render(request, 'login.html', {'error': 'اسم المستخدم أو كلمة المرور غير صحيحة'})
+
+    return render(request, 'login.html')
+
+@login_required
+def dashboard_view(request):
+    return render(request, 'dashboard.html')
+
+def logout_view(request):
+    logout(request)
+    return redirect('login')
+
+@login_required
+def products_page(request):
+    return render(request, 'products.html')
+
+@login_required
+def customers_page(request):
+    return render(request, 'customers.html')
+
+@login_required
+def sales_page(request):
+    return render(request, 'sales.html')
+
+@login_required
+def payments_page(request):
+    return render(request, 'payments.html')
+
+@csrf_exempt
+def register_view(request):
+    if request.method == 'POST':
+        if request.content_type == 'application/json':
+            data = json.loads(request.body)
+            username = data.get('username')
+            password = data.get('password')
+            email = data.get('email', '')
+        else:
+            username = request.POST.get('username')
+            password = request.POST.get('password')
+            email = request.POST.get('email', '')
+
+        if User.objects.filter(username=username).exists():
+            msg = 'اسم المستخدم مُستخدم بالفعل، يرجى اختيار اسم آخر'
+            if request.content_type == 'application/json':
+                return JsonResponse({'detail': msg}, status=400)
+            return render(request, 'register.html', {'error': msg})
+
+        # إنشاء المستخدم الجديد
+        user = User.objects.create_user(username=username, password=password, email=email)
+        
+        # تسجيل الدخول تلقائياً (Session + JWT)
+        login(request, user)
+        refresh = RefreshToken.for_user(user)
+
+        if request.content_type == 'application/json':
+            return JsonResponse({
+                'success': True,
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+                'redirect_url': '/selling_system/dashboard/'
+            })
+        return redirect('dashboard')
+
+    return render(request, 'register.html')

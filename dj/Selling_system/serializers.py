@@ -95,22 +95,26 @@ class Sale_Serializer(serializers.ModelSerializer):
 
     def get_status(self, obj):
         if obj.payment_type != 'debt':
-
             return True
-
-        elif obj.customer is not None:
-
-            if obj.customer.total_remaining <= 0:
-
-                return True
-
-            else:
-
-                return False
-
-        else:
-
+        if obj.customer is None:
             return False
+
+        # نحسب حالة كل فواتير العميل مرة واحدة لكل طلب (cache)
+        cache = self.context.setdefault('_debt_status', {})
+        if obj.customer_id not in cache:
+            pool = obj.customer.total_paid          # مجموع ما دفعه العميل
+            statuses = {}
+            debt_sales = obj.customer.sales.filter(payment_type='debt').order_by('date_created', 'id')
+            for s in debt_sales:
+                total = s.big_total
+                if pool >= total:
+                    statuses[s.id] = True
+                    pool -= total
+                else:
+                    statuses[s.id] = False
+            cache[obj.customer_id] = statuses
+
+        return cache[obj.customer_id].get(obj.id, False)
         
     class Meta:
 

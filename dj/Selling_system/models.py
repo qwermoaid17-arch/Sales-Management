@@ -16,12 +16,10 @@ class Products(models.Model):
 
 class Customers(models.Model):
 
-    name = models.CharField(max_length=100)
+    name = models.CharField(max_length=100) 
 
     def __str__(self):
         return self.name
-
-
 
     @property
     def total_debt(self):
@@ -30,7 +28,6 @@ class Customers(models.Model):
         ).aggregate(
             total=Sum('items__total_price')
         )['total']
-        
         return result if result is not None else Decimal('0.00')
 
     @property
@@ -38,15 +35,17 @@ class Customers(models.Model):
         result = self.payments.aggregate(
             total=Sum('amount')
         )['total']
-        
         return result if result is not None else Decimal('0.00')
-    
+
     @property
     def total_remaining(self):
 
-        g = self.total_debt - self.total_paid
-        return g if g is not None else Decimal('0.00')
-    
+        return max(self.total_debt - self.total_paid, Decimal('0.00'))
+
+    @property
+    def credit_balance(self):
+
+        return max(self.total_paid - self.total_debt, Decimal('0.00'))
 class Payments(models.Model):
 
     customer = models.ForeignKey(Customers, on_delete=models.CASCADE, related_name='payments')

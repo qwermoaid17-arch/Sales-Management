@@ -64,6 +64,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
 ]
 
 ROOT_URLCONF = 'dj.urls'
@@ -174,3 +175,10 @@ LOGIN_URL = '/selling_system/login/'
 
 # تحديد مسار التوجيه التلقائي بعد الدخول الناجح
 LOGIN_REDIRECT_URL = '/selling_system/dashboard/'
+
+# إعدادات الملفات الساكنة لبيئة الإنتاج
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# تفعيل تخزين وتضغط الملفات عبر WhiteNoise
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'

@@ -46,7 +46,7 @@ class Products_View_Set(ModelViewSet):
         user = self.request.user
         if user.is_staff:
             return Product_admin_Serializer
-        return Product_Serializer
+        return Product_admin_Serializer
 
 class Customers_View_Set(ModelViewSet):
 
